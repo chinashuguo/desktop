@@ -5,9 +5,6 @@
 
 import {app, dialog, ipcMain, Menu, shell} from 'electron';
 
-import settings from '../../common/settings';
-import buildConfig from '../../common/config/buildConfig';
-
 function createTemplate(mainWindow, config, isDev) {
   const settingsURL = isDev ? 'http://localhost:8080/browser/settings.html' : `file://${app.getAppPath()}/browser/settings.html`;
 
@@ -42,7 +39,7 @@ function createTemplate(mainWindow, config, isDev) {
     },
   }];
 
-  if (buildConfig.enableServerManagement === true) {
+  if (config.enableServerManagement === true) {
     platformAppMenu.push({
       label: 'Sign in to Another Server',
       click() {
@@ -189,11 +186,14 @@ function createTemplate(mainWindow, config, isDev) {
     }],
   });
 
-  const teams = settings.mergeDefaultTeams(config.teams);
+  const teams = config.teams;
   const windowMenu = {
     label: '&Window',
     submenu: [{
       role: 'minimize',
+
+      // empty string removes shortcut on Windows; null will default by OS
+      accelerator: process.platform === 'win32' ? '' : null,
     }, {
       role: 'close',
     }, separatorItem, ...teams.slice(0, 9).map((team, i) => {
@@ -223,11 +223,11 @@ function createTemplate(mainWindow, config, isDev) {
   };
   template.push(windowMenu);
   const submenu = [];
-  if (buildConfig.helpLink) {
+  if (config.helpLink) {
     submenu.push({
       label: 'Learn More...',
       click() {
-        shell.openExternal(buildConfig.helpLink);
+        shell.openExternal(config.helpLink);
       },
     });
     submenu.push(separatorItem);
@@ -236,7 +236,7 @@ function createTemplate(mainWindow, config, isDev) {
     label: `Version ${app.getVersion()}`,
     enabled: false,
   });
-  if (buildConfig.enableAutoUpdater) {
+  if (config.enableAutoUpdater) {
     submenu.push({
       label: 'Check for Updates...',
       click() {

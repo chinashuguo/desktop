@@ -2,8 +2,8 @@
 // Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+// This file uses setState().
 /* eslint-disable react/no-set-state */
-// setState() is necessary for this component
 
 import url from 'url';
 
@@ -12,6 +12,7 @@ import PropTypes from 'prop-types';
 import {ipcRenderer, remote, shell} from 'electron';
 
 import contextMenu from '../js/contextMenu';
+import Utils from '../../utils/util';
 import {protocols} from '../../../electron-builder.json';
 const scheme = protocols[0].schemes[0];
 
@@ -31,6 +32,7 @@ export default class MattermostView extends React.Component {
       isContextMenuAdded: false,
       reloadTimeoutID: null,
       isLoaded: false,
+      basename: '/',
     };
 
     this.handleUnreadCountChange = this.handleUnreadCountChange.bind(this);
@@ -43,6 +45,7 @@ export default class MattermostView extends React.Component {
     this.goForward = this.goForward.bind(this);
     this.getSrc = this.getSrc.bind(this);
     this.handleDeepLink = this.handleDeepLink.bind(this);
+    this.handleUserActivityUpdate = this.handleUserActivityUpdate.bind(this);
 
     this.webviewRef = React.createRef();
   }
@@ -94,9 +97,12 @@ export default class MattermostView extends React.Component {
         return;
       }
 
-      if (currentURL.host === destURL.host) {
+      if (Utils.isInternalURL(destURL, currentURL, this.state.basename)) {
         if (destURL.path.match(/^\/api\/v[3-4]\/public\/files\//)) {
           ipcRenderer.send('download-url', e.url);
+        } else if (destURL.path.match(/^\/help\//)) {
+          // continue to open special case internal urls in default browser
+          shell.openExternal(e.url);
         } else {
           // New window should disable nodeIntegration.
           window.open(e.url, remote.app.getName(), 'nodeIntegration=no, show=yes');
@@ -137,6 +143,7 @@ export default class MattermostView extends React.Component {
       case 'onGuestInitialized':
         self.setState({
           isLoaded: true,
+          basename: event.args[0] || '/',
         });
         break;
       case 'onBadgeChange': {
@@ -180,6 +187,14 @@ export default class MattermostView extends React.Component {
         break;
       }
     });
+
+    // start listening for user status updates from main
+    ipcRenderer.on('user-activity-update', this.handleUserActivityUpdate);
+  }
+
+  componentWillUnmount() {
+    // stop listening for user status updates from main
+    ipcRenderer.removeListener('user-activity-update', this.handleUserActivityUpdate);
   }
 
   reload() {
@@ -247,6 +262,11 @@ export default class MattermostView extends React.Component {
     );
   }
 
+  handleUserActivityUpdate(event, status) {
+    // pass user activity update to the webview
+    this.webviewRef.current.send('user-activity-update', status);
+  }
+
   render() {
     const errorView = this.state.errorInfo ? (
       <ErrorView
@@ -303,3 +323,5 @@ MattermostView.propTypes = {
   useSpellChecker: PropTypes.bool,
   onSelectSpellCheckerLocale: PropTypes.func,
 };
+
+/* eslint-enable react/no-set-state */

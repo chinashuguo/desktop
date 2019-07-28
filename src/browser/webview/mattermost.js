@@ -6,10 +6,13 @@
 import {ipcRenderer, webFrame} from 'electron';
 
 import EnhancedNotification from '../js/notification';
+import WebappConnector from '../js/WebappConnector';
 
 const UNREAD_COUNT_INTERVAL = 1000;
 //eslint-disable-next-line no-magic-numbers
 const CLEAR_CACHE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+
+const webappConnector = new WebappConnector();
 
 Notification = EnhancedNotification; // eslint-disable-line no-global-assign, no-native-reassign
 
@@ -46,7 +49,7 @@ window.addEventListener('load', () => {
     return;
   }
   watchReactAppUntilInitialized(() => {
-    ipcRenderer.sendToHost('onGuestInitialized');
+    ipcRenderer.sendToHost('onGuestInitialized', window.basename);
   });
 });
 
@@ -90,7 +93,7 @@ function getUnreadCount() {
   }
 
   // mentionCount in sidebar
-  const elem = document.getElementsByClassName('badge');
+  const elem = document.querySelectorAll('#sidebar-left .badge');
   let mentionCount = 0;
   for (let i = 0; i < elem.length; i++) {
     if (isElementVisible(elem[i]) && !hasClass(elem[i], 'badge-notify')) {
@@ -183,16 +186,25 @@ function resetMisspelledState() {
 
 function setSpellChecker() {
   const spellCheckerLocale = ipcRenderer.sendSync('get-spellchecker-locale');
-  webFrame.setSpellCheckProvider(spellCheckerLocale, false, {
-    spellCheck(text) {
-      const res = ipcRenderer.sendSync('checkspell', text);
-      return res === null ? true : res;
+  webFrame.setSpellCheckProvider(spellCheckerLocale, {
+    spellCheck(words, callback) {
+      const misspeltWords = words.filter((text) => {
+        const res = ipcRenderer.sendSync('checkspell', text);
+        const isCorrect = (res === null) ? true : res;
+        return !isCorrect;
+      });
+      callback(misspeltWords);
     },
   });
   resetMisspelledState();
 }
 setSpellChecker();
 ipcRenderer.on('set-spellchecker', setSpellChecker);
+
+// push user activity updates to the webapp via the communication bridge
+ipcRenderer.on('user-activity-update', (event, {userIsActive, isSystemEvent}) => {
+  webappConnector.emit('user-activity-update', {userIsActive, manual: isSystemEvent});
+});
 
 // mattermost-webapp is SPA. So cache is not cleared due to no navigation.
 // We needed to manually clear cache to free memory in long-term-use.
